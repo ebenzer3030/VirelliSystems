@@ -1,0 +1,8 @@
+<svg width="160" height="32" viewBox="0 0 160 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Placeholder wordmark. Replace this file with your real Virelli logo,
+       or swap the text in components/Header.tsx to reference it via
+       next/image once you have a final mark. -->
+  <text x="0" y="22" font-family="Sora, sans-serif" font-size="20" font-weight="600" fill="#F5F7FA">
+    Virelli <tspan fill="#8B93A7" font-weight="400">Systems</tspan>
+  </text>
+</svg>
