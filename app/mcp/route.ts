@@ -82,13 +82,7 @@ const handler = createMcpHandler(() => {
         first_message: z.string().min(1),
       }),
 
-      securitySchemes: [
-        {
-          type: "oauth2",
-          scopes: [REQUIRED_SCOPE],
-        },
-      ],
-    },
+ 
 
     async ({ agent_name, voice_id, prompt, first_message }) => {
       const retellKey = process.env.RETELL_API_KEY;
