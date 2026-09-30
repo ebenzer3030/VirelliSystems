@@ -1,26 +1,28 @@
-import { NextRequest } from "next/server";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { z } from "zod";
+import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import * as z from "zod/v4";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function createServer() {
+const handler = createMcpHandler(() => {
   const server = new McpServer({
     name: "virelli-retell-builder",
     version: "1.0.0",
   });
 
-  server.tool(
+  server.registerTool(
     "create_retell_demo",
-    "Creates a new Virelli AI receptionist demo in Retell.",
     {
-      agent_name: z.string().min(1),
-      voice_id: z.string().min(1),
-      prompt: z.string().min(1),
-      first_message: z.string().min(1),
+      description: "Creates a new Virelli AI receptionist demo in Retell.",
+
+      inputSchema: z.object({
+        agent_name: z.string().min(1),
+        voice_id: z.string().min(1),
+        prompt: z.string().min(1),
+        first_message: z.string().min(1),
+      }),
     },
+
     async ({ agent_name, voice_id, prompt, first_message }) => {
       const retellKey = process.env.RETELL_API_KEY;
 
@@ -28,6 +30,7 @@ function createServer() {
         throw new Error("RETELL_API_KEY is not configured.");
       }
 
+      // Create Retell LLM
       const llmResponse = await fetch(
         "https://api.retellai.com/create-retell-llm",
         {
@@ -51,6 +54,7 @@ function createServer() {
 
       const llm = await llmResponse.json();
 
+      // Create Retell agent
       const agentResponse = await fetch(
         "https://api.retellai.com/create-agent",
         {
@@ -81,8 +85,12 @@ function createServer() {
       return {
         content: [
           {
-            type: "text",
-            text: `Demo created successfully. Agent: ${agent_name}. Agent ID: ${agent.agent_id}. LLM ID: ${llm.llm_id}.`,
+            type: "text" as const,
+            text:
+              `Virelli demo created successfully. ` +
+              `Agent: ${agent_name}. ` +
+              `Agent ID: ${agent.agent_id}. ` +
+              `LLM ID: ${llm.llm_id}.`,
           },
         ],
       };
@@ -90,19 +98,16 @@ function createServer() {
   );
 
   return server;
+});
+
+export async function GET(request: Request) {
+  return handler.fetch(request);
 }
 
-async function handler(req: NextRequest) {
-  const server = createServer();
-
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-  });
-
-  await server.connect(transport);
-
-  return transport.handleRequest(req as any);
+export async function POST(request: Request) {
+  return handler.fetch(request);
 }
 
-export { handler as GET, handler as POST, handler as DELETE };
+export async function DELETE(request: Request) {
+  return handler.fetch(request);
+}
