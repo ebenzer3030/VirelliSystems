@@ -81,6 +81,8 @@ const handler = createMcpHandler(() => {
         prompt: z.string().min(1),
         first_message: z.string().min(1),
       }),
+      },
+
 
  
 
