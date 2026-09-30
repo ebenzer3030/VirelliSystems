@@ -1,8 +1,68 @@
-import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import {
+  McpServer,
+  createMcpHandler,
+  requireBearerAuth,
+  getOAuthProtectedResourceMetadataUrl,
+  OAuthError,
+  OAuthErrorCode,
+  type AuthInfo,
+  type OAuthTokenVerifier,
+} from "@modelcontextprotocol/server";
+
 import * as z from "zod/v4";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const MCP_RESOURCE = "https://www.virellisystems.com/mcp";
+const AUTH0_ISSUER = "https://dev-2d3k443udiv58w5z.us.auth0.com/";
+const REQUIRED_SCOPE = "create:retell_demo";
+
+const JWKS = createRemoteJWKSet(
+  new URL(`${AUTH0_ISSUER}.well-known/jwks.json`)
+);
+
+const verifier: OAuthTokenVerifier = {
+  async verifyAccessToken(token: string): Promise<AuthInfo> {
+    try {
+      const { payload } = await jwtVerify(token, JWKS, {
+        issuer: AUTH0_ISSUER,
+        audience: MCP_RESOURCE,
+        algorithms: ["RS256"],
+      });
+
+      if (!payload.exp) {
+        throw new Error("Token has no expiration.");
+      }
+
+      const scopes =
+        typeof payload.scope === "string"
+          ? payload.scope.split(" ").filter(Boolean)
+          : [];
+
+      return {
+        token,
+        clientId: String(payload.azp ?? payload.sub ?? "unknown"),
+        scopes,
+        expiresAt: payload.exp,
+      };
+    } catch {
+      throw new OAuthError(
+        OAuthErrorCode.InvalidToken,
+        "Invalid or expired access token."
+      );
+    }
+  },
+};
+
+const gate = requireBearerAuth({
+  verifier,
+  requiredScopes: [REQUIRED_SCOPE],
+  resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(
+    new URL(MCP_RESOURCE)
+  ),
+});
 
 const handler = createMcpHandler(() => {
   const server = new McpServer({
@@ -13,7 +73,7 @@ const handler = createMcpHandler(() => {
   server.registerTool(
     "create_retell_demo",
     {
-      description: "Creates a new Virelli AI receptionist demo in Retell.",
+      description: "Creates and configures a new Virelli AI receptionist demo in Retell.",
 
       inputSchema: z.object({
         agent_name: z.string().min(1),
@@ -21,6 +81,13 @@ const handler = createMcpHandler(() => {
         prompt: z.string().min(1),
         first_message: z.string().min(1),
       }),
+
+      securitySchemes: [
+        {
+          type: "oauth2",
+          scopes: [REQUIRED_SCOPE],
+        },
+      ],
     },
 
     async ({ agent_name, voice_id, prompt, first_message }) => {
@@ -30,7 +97,6 @@ const handler = createMcpHandler(() => {
         throw new Error("RETELL_API_KEY is not configured.");
       }
 
-      // Create Retell LLM
       const llmResponse = await fetch(
         "https://api.retellai.com/create-retell-llm",
         {
@@ -54,7 +120,6 @@ const handler = createMcpHandler(() => {
 
       const llm = await llmResponse.json();
 
-      // Create Retell agent
       const agentResponse = await fetch(
         "https://api.retellai.com/create-agent",
         {
@@ -100,14 +165,26 @@ const handler = createMcpHandler(() => {
   return server;
 });
 
+async function secured(request: Request) {
+  const auth = await gate(request);
+
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  return handler.fetch(request, {
+    authInfo: auth,
+  });
+}
+
 export async function GET(request: Request) {
-  return handler.fetch(request);
+  return secured(request);
 }
 
 export async function POST(request: Request) {
-  return handler.fetch(request);
+  return secured(request);
 }
 
 export async function DELETE(request: Request) {
-  return handler.fetch(request);
+  return secured(request);
 }
