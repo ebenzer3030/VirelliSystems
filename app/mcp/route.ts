@@ -275,106 +275,26 @@ const handler = createMcpHandler(() => {
       description:
         "Builds a personalized, sales-ready Virelli Retell receptionist demo for a real business. IMPORTANT: before calling this tool, research the supplied business website and, when useful, other public sources. Pass only verified business facts. Extract the business's actual services, hours, location, common caller questions, pricing information if public, booking process, and likely escalation needs. Do not invent missing facts. The tool automatically builds the full receptionist prompt, greeting, and Retell agent. Use this when the user says things like 'build a demo for this website'.",
       inputSchema: z.object({
-        business_name: z
-          .string()
-          .min(1)
-          .describe("Verified public business name."),
-        website_url: z
-          .string()
-          .url()
-          .describe("The business website researched before calling this tool."),
-        business_summary: z
-          .string()
-          .min(1)
-          .describe("Short factual summary of what the business does."),
-        services: z
-          .array(z.string().min(1))
-          .min(1)
-          .describe("Verified services or service categories offered by the business."),
-        business_hours: z
-          .string()
-          .optional()
-          .describe("Verified published opening or phone hours. Omit if unknown."),
-        location: z
-          .string()
-          .optional()
-          .describe("Verified suburb, city, address, or service area. Omit if unknown."),
-        common_enquiries: z
-          .array(z.string().min(1))
-          .optional()
-          .describe("Likely caller questions with verified answers where available."),
-        pricing_notes: z
-          .string()
-          .optional()
-          .describe("Only public verified pricing or a note that pricing requires a quote."),
-        booking_process: z
-          .string()
-          .optional()
-          .describe("Verified booking, quote, consultation, or enquiry process."),
-        escalation_rules: z
-          .string()
-          .optional()
-          .describe("How complex, urgent, existing-customer, or human-request calls should be handled."),
-        demo_focus: z
-          .string()
-          .optional()
-          .describe("What the demo should emphasize, such as missed calls, bookings, after-hours enquiries, or lead capture."),
-        extra_notes: z
-          .string()
-          .optional()
-          .describe("Any other verified business-specific facts that materially improve the demo."),
-        agent_name: z
-          .string()
-          .optional()
-          .describe("Optional Retell agent name. Defaults to '<Business Name> - Virelli Demo'."),
-        voice_id: z
-          .string()
-          .optional()
-          .describe("Optional Retell voice ID. Defaults to Adrian."),
+        agent_name: z.string().min(1).describe("Retell agent name."),
+        voice_id: z.string().min(1).describe("Retell voice ID, for example 11labs-Adrian."),
+        prompt: z.string().min(1).describe("Complete personalized receptionist system prompt based on verified business research."),
+        first_message: z.string().min(1).describe("Natural opening greeting for the business."),
       }),
     },
     async ({
-      business_name,
-      website_url,
-      business_summary,
-      services,
-      business_hours,
-      location,
-      common_enquiries,
-      pricing_notes,
-      booking_process,
-      escalation_rules,
-      demo_focus,
-      extra_notes,
       agent_name,
       voice_id,
+      prompt,
+      first_message,
     }) => {
-      const profile: DemoProfile = {
-        businessName: business_name.trim(),
-        websiteUrl: website_url,
-        businessSummary: business_summary.trim(),
-        services,
-        businessHours: business_hours,
-        location,
-        commonEnquiries: common_enquiries,
-        pricingNotes: pricing_notes,
-        bookingProcess: booking_process,
-        escalationRules: escalation_rules,
-        demoFocus: demo_focus,
-        extraNotes: extra_notes,
-      };
-
-      const prompt = buildSellableDemoPrompt(profile);
-      const firstMessage = `Hi, thanks for calling ${profile.businessName}. How can I help?`;
-      const finalAgentName =
-        agent_name?.trim() || `${profile.businessName} - Virelli Demo`;
-      const finalVoiceId = voice_id?.trim() || DEFAULT_VOICE_ID;
+      const finalAgentName = agent_name.trim();
+      const finalVoiceId = voice_id.trim();
 
       const result = await createRetellAgent({
         agentName: finalAgentName,
         voiceId: finalVoiceId,
-        prompt,
-        firstMessage,
+        prompt: prompt.trim(),
+        firstMessage: first_message.trim(),
       });
 
       return {
