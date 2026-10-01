@@ -303,7 +303,6 @@ const handler = createMcpHandler(() => {
             type: "text" as const,
             text:
               `Virelli business demo created successfully. ` +
-              `Business: ${profile.businessName}. ` +
               `Agent: ${finalAgentName}. ` +
               `Agent ID: ${result.agentId}. ` +
               `LLM ID: ${result.llmId}. ` +
