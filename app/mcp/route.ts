@@ -11,6 +11,7 @@ import {
 
 import * as z from "zod/v4";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import Retell from "retell-sdk";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -222,60 +223,44 @@ async function createRetellAgent(args: {
     throw new Error("RETELL_API_KEY is not configured.");
   }
 
-  const llmResponse = await fetch(
-    "https://api.retellai.com/create-retell-llm",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${retellKey}`,
-        "Content-Type": "application/json",
+  const client = new Retell({
+    apiKey: retellKey,
+    maxRetries: 2,
+  });
+
+  try {
+    const llm = await client.llm.create({
+      general_prompt: args.prompt,
+      begin_message: args.firstMessage,
+    });
+
+    const agent = await client.agent.create({
+      agent_name: args.agentName,
+      voice_id: args.voiceId,
+      response_engine: {
+        type: "retell-llm",
+        llm_id: llm.llm_id,
       },
-      body: JSON.stringify({
-        general_prompt: args.prompt,
-        begin_message: args.firstMessage,
-      }),
+    });
+
+    return {
+      agentId: agent.agent_id,
+      llmId: llm.llm_id,
+    };
+  } catch (error) {
+    if (error instanceof Retell.APIError) {
+      const details =
+        typeof error.error === "object" && error.error
+          ? JSON.stringify(error.error)
+          : String(error.message);
+
+      throw new Error(
+        `Retell API failed (${error.status ?? "unknown status"}): ${details}`
+      );
     }
-  );
 
-  if (!llmResponse.ok) {
-    throw new Error(
-      `Retell LLM creation failed: ${await llmResponse.text()}`
-    );
+    throw error;
   }
-
-  const llm = await llmResponse.json();
-
-  const agentResponse = await fetch(
-    "https://api.retellai.com/create-agent",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${retellKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        agent_name: args.agentName,
-        voice_id: args.voiceId,
-        response_engine: {
-          type: "retell-llm",
-          llm_id: llm.llm_id,
-        },
-      }),
-    }
-  );
-
-  if (!agentResponse.ok) {
-    throw new Error(
-      `Retell agent creation failed: ${await agentResponse.text()}`
-    );
-  }
-
-  const agent = await agentResponse.json();
-
-  return {
-    agentId: agent.agent_id as string,
-    llmId: llm.llm_id as string,
-  };
 }
 
 const handler = createMcpHandler(() => {
