@@ -211,6 +211,34 @@ Before finishing:
 This is a sales demo for ${profile.businessName}. It should feel specific to their actual business, not like a generic AI template. The business owner should quickly understand how this receptionist could protect missed opportunities, reduce repetitive front-desk workload, and capture callers professionally without exaggerating what the system can do.`;
 }
 
+const VIRELLI_HUMANLIKE_STANDARD = `
+# VIRELLI HUMANLIKE DEMO STANDARD — HIGHEST PRIORITY
+You are Ava, a highly natural female virtual receptionist. Sound like an experienced human receptionist, not a chatbot.
+
+CONVERSATION BEHAVIOUR
+- Use natural Australian business English.
+- Keep most replies to 1–3 short sentences, then pause.
+- Ask one question at a time.
+- Never dump a menu or long list unless the caller asks.
+- If the caller interrupts, STOP speaking immediately and listen to the new point.
+- Use everything the caller has already told you. Never ask for the same information twice unless genuinely unclear.
+- Never sound like you are filling out a form. Phrase questions conversationally.
+- Use brief natural acknowledgements such as "Yeah, absolutely", "No worries", "Got you", "Sure", "Perfect", or "Okay" when they fit. Do not overuse them.
+- Avoid robotic phrases such as "Thank you for providing that information", "I would be delighted to assist", or "Is there anything else I can assist you with today?"
+- Do not over-explain or give speeches.
+- Allow the caller room to respond. Do not race into the next question.
+- Remain calm with confused, frustrated, or angry callers.
+- If directly asked whether you are AI, answer honestly that you are the company's virtual receptionist and continue helping.
+- Never invent facts, prices, availability, bookings, staff availability, policies, or system actions.
+- Before ending, make sure the caller's original reason for calling is resolved or there is a clear next step.
+- Do not end immediately after an unresolved escalation or callback; explain the next step, then pause so the caller can respond.
+
+SPEECH STYLE
+- Human, warm, calm, capable, concise.
+- Natural rhythm rather than perfect scripted grammar.
+- Do not use filler in every sentence, but occasional conversational wording is fine.
+`;
+
 async function createRetellAgent(args: {
   agentName: string;
   voiceId: string;
@@ -218,34 +246,77 @@ async function createRetellAgent(args: {
   firstMessage: string;
 }) {
   const retellKey = process.env.RETELL_API_KEY;
+  if (!retellKey) throw new Error("RETELL_API_KEY is not configured.");
 
-  if (!retellKey) {
-    throw new Error("RETELL_API_KEY is not configured.");
-  }
-
-  const client = new Retell({
-    apiKey: retellKey,
-    maxRetries: 2,
-  });
+  const client = new Retell({ apiKey: retellKey, maxRetries: 2 });
 
   try {
+    // Replace an existing demo with the same agent name so recreating a demo
+    // does not leave duplicate agents behind.
+    const existing = await client.agent.list({ limit: 100 });
+    const duplicates = existing.items.filter(
+      (item) => item.agent_name.trim().toLowerCase() === args.agentName.trim().toLowerCase()
+    );
+
+    for (const item of duplicates) {
+      let oldLlmId: string | undefined;
+      try {
+        const oldAgent = await client.agent.retrieve(item.agent_id);
+        const engine = oldAgent.response_engine as { type?: string; llm_id?: string } | undefined;
+        if (engine?.type === "retell-llm") oldLlmId = engine.llm_id;
+      } catch {}
+      await client.agent.delete(item.agent_id);
+      if (oldLlmId) {
+        try { await client.llm.delete(oldLlmId); } catch {}
+      }
+    }
+
+    let resolvedVoiceId = args.voiceId;
+    if (args.voiceId === "AUTO_FEMALE_AU") {
+      const voices = await client.voice.list();
+      const female = voices
+        .filter((v) => v.gender === "female")
+        .sort((a, b) => {
+          const aAu = /austral/i.test(a.accent ?? "") ? 1 : 0;
+          const bAu = /austral/i.test(b.accent ?? "") ? 1 : 0;
+          const aEleven = a.provider === "elevenlabs" ? 1 : 0;
+          const bEleven = b.provider === "elevenlabs" ? 1 : 0;
+          return (bAu - aAu) || (bEleven - aEleven);
+        })[0];
+
+      if (!female) throw new Error("No female Retell voice is available on this account.");
+      resolvedVoiceId = female.voice_id;
+    }
+
+    const fullPrompt = `${VIRELLI_HUMANLIKE_STANDARD}\n\n# BUSINESS-SPECIFIC DEMO INSTRUCTIONS\n${args.prompt}`;
+
     const llm = await client.llm.create({
-      general_prompt: args.prompt,
+      general_prompt: fullPrompt,
       begin_message: args.firstMessage,
     });
 
     const agent = await client.agent.create({
       agent_name: args.agentName,
-      voice_id: args.voiceId,
-      response_engine: {
-        type: "retell-llm",
-        llm_id: llm.llm_id,
+      voice_id: resolvedVoiceId,
+      response_engine: { type: "retell-llm", llm_id: llm.llm_id },
+      interruption_sensitivity: 0.9,
+      enable_backchannel: true,
+      enable_dynamic_responsiveness: true,
+      enable_dynamic_voice_speed: true,
+      enable_expressive_mode: true,
+      handbook_config: {
+        conversational_personality: true,
+        natural_filler_words: true,
+        smart_matching: true,
+        speech_normalization: true,
+        scope_boundaries: true,
       },
     });
 
     return {
       agentId: agent.agent_id,
       llmId: llm.llm_id,
+      voiceId: resolvedVoiceId,
     };
   } catch (error) {
     if (error instanceof Retell.APIError) {
@@ -253,12 +324,10 @@ async function createRetellAgent(args: {
         typeof error.error === "object" && error.error
           ? JSON.stringify(error.error)
           : String(error.message);
-
       throw new Error(
         `Retell API failed (${error.status ?? "unknown status"}): ${details}`
       );
     }
-
     throw error;
   }
 }
@@ -290,11 +359,14 @@ const handler = createMcpHandler(() => {
       const finalAgentName = agent_name.trim();
       const finalVoiceId = voice_id.trim();
 
+      const companyName = finalAgentName.replace(/\s*-\s*Virelli Demo\s*$/i, "").trim();
+      const standardOpening = `Hey, thanks for giving us a call at ${companyName}, it's Ava speaking. How can I help?`;
+
       const result = await createRetellAgent({
         agentName: finalAgentName,
         voiceId: finalVoiceId,
         prompt: prompt.trim(),
-        firstMessage: first_message.trim(),
+        firstMessage: standardOpening,
       });
 
       return {
@@ -306,6 +378,7 @@ const handler = createMcpHandler(() => {
               `Agent: ${finalAgentName}. ` +
               `Agent ID: ${result.agentId}. ` +
               `LLM ID: ${result.llmId}. ` +
+              `Voice ID: ${result.voiceId}. ` +
               `The prompt was personalized from the supplied verified website research and configured for enquiries, lead capture, booking-intent capture, pricing accuracy, escalation, and safe fallback handling.`,
           },
         ],
