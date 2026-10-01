@@ -232,6 +232,10 @@ CONVERSATION BEHAVIOUR
 - Never invent facts, prices, availability, bookings, staff availability, policies, or system actions.
 - Before ending, make sure the caller's original reason for calling is resolved or there is a clear next step.
 - Do not end immediately after an unresolved escalation or callback; explain the next step, then pause so the caller can respond.
+- When the caller clearly indicates they are finished (for example: "that's all", "nah that's it", "thanks", "all good", "bye", or equivalent), give ONE brief natural closing such as "No worries, thanks for calling. Have a good one." Then immediately use the end_call tool.
+- If you ask whether they need anything else and they say no, close naturally and use end_call immediately.
+- Never leave the line open in silence after a completed conversation.
+- Do not keep asking new questions after the caller has clearly finished.
 
 SPEECH STYLE
 - Human, warm, calm, capable, concise.
@@ -293,6 +297,15 @@ async function createRetellAgent(args: {
     const llm = await client.llm.create({
       general_prompt: fullPrompt,
       begin_message: args.firstMessage,
+      general_tools: [
+        {
+          type: "end_call",
+          name: "end_call",
+          description:
+            "End the phone call after the caller's request is resolved and they clearly indicate they are finished, or after Ava gives a brief natural final goodbye. Do not use this while the caller still has an unresolved question or is waiting for a next step.",
+          speak_during_execution: false,
+        },
+      ],
     });
 
     const agent = await client.agent.create({
