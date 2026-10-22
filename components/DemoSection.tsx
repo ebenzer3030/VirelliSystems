@@ -14,11 +14,9 @@ export default function DemoSection() {
         </div>
 
         <div className="mx-auto mt-10 max-w-lg">
-          {/* Swap the src below once you have a real recording — the file
-              just needs to live at public/audio/demo-plumbing.mp3 */}
           <AudioPlayer
-            src="/audio/demo-plumbing.mp3"
-            industry="Plumbing business"
+            src="/audio/demo-tellish-studio.mp3"
+            industry="Tellish Studio"
             callType="Incoming enquiry"
           />
         </div>
